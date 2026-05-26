@@ -9,7 +9,7 @@ export async function registerPasskey(email: string, displayName: string) {
     challenge_id: string;
     public_key_options: Record<string, unknown>;
     user: { id: string; email: string; display_name: string };
-  }>("/auth/register/start", { email, display_name });
+  }>("/auth/register/start", { email, display_name: displayName });
 
   const credential = await startRegistration({ optionsJSON: public_key_options });
 

@@ -1,28 +1,102 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { registerPasskey } from "@/lib/webauthn";
+import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { user, loading: authLoading, setUser } = useAuth();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [generatedPassphrase, setGeneratedPassphrase] = useState<string | null>(null);
+  const [pendingTokens, setPendingTokens] = useState<{ access: string; refresh: string; user: { id: string; email: string; display_name: string; role: string; avatar_url: string | null } } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push("/dashboard");
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
+      </main>
+    );
+  }
+
+  if (user) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await registerPasskey(email, displayName);
-      router.push("/login");
+      const data = await api.post<{
+        access_token: string;
+        refresh_token: string;
+        passphrase: string;
+        user: { id: string; email: string; display_name: string; role: string; avatar_url: string | null };
+      }>("/auth/register", { email, display_name: displayName });
+      setGeneratedPassphrase(data.passphrase);
+      setPendingTokens({ access: data.access_token, refresh: data.refresh_token, user: data.user });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleConfirm() {
+    if (!pendingTokens) return;
+    localStorage.setItem("access_token", pendingTokens.access);
+    localStorage.setItem("refresh_token", pendingTokens.refresh);
+    setUser(pendingTokens.user);
+    router.push("/dashboard");
+  }
+
+  async function handleCopy() {
+    if (generatedPassphrase) {
+      await navigator.clipboard.writeText(generatedPassphrase);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  if (generatedPassphrase) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-8">
+        <div className="w-full max-w-md text-center">
+          <h1 className="mb-2 text-3xl font-bold">Account Created</h1>
+          <p className="mb-8 text-neutral-400">
+            Save your passphrase — you will need it to sign in. It will not be shown again.
+          </p>
+          <div className="mb-6 rounded-lg border border-yellow-600 bg-yellow-900/30 p-6">
+            <p className="mb-3 text-sm text-yellow-400">⚠ Your generated passphrase</p>
+            <code className="select-all break-all rounded bg-neutral-800 px-4 py-3 text-lg font-mono">
+              {generatedPassphrase}
+            </code>
+          </div>
+          <button
+            onClick={handleCopy}
+            className="mb-4 w-full rounded-lg border border-neutral-600 px-6 py-3 font-medium transition hover:bg-neutral-800"
+          >
+            {copied ? "Copied!" : "Copy passphrase"}
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="w-full rounded-lg bg-white px-6 py-3 font-medium text-black transition hover:bg-neutral-200"
+          >
+            I saved my passphrase — go to dashboard
+          </button>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -52,7 +126,7 @@ export default function RegisterPage() {
             disabled={loading}
             className="rounded-lg bg-white px-6 py-3 font-medium text-black transition hover:bg-neutral-200 disabled:opacity-50"
           >
-            {loading ? "Creating..." : "Create Passkey"}
+            {loading ? "Creating..." : "Create Account"}
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-neutral-500">

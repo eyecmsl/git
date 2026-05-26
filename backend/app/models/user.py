@@ -18,6 +18,7 @@ class User(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(255), unique=True, nullable=False)
     display_name = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=True)
     role = db.Column(db.String(16), nullable=False, default=UserRole.USER)
     avatar_url = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

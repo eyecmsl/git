@@ -1,24 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { loginWithPasskey } from "@/lib/webauthn";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setUser } = useAuth();
+  const { user, loading: authLoading, setUser } = useAuth();
   const [email, setEmail] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push("/dashboard");
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
+      </main>
+    );
+  }
+
+  if (user) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const user = await loginWithPasskey(email);
-      setUser(user);
+      const data = await api.post<{
+        access_token: string;
+        refresh_token: string;
+        user: { id: string; email: string; display_name: string; role: string; avatar_url: string | null };
+      }>("/auth/login", { email, passphrase });
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      setUser(data.user);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -40,13 +63,21 @@ export default function LoginPage() {
             required
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 outline-none focus:border-white"
           />
+          <input
+            type="password"
+            placeholder="Passphrase"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            required
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 outline-none focus:border-white"
+          />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
             disabled={loading}
             className="rounded-lg bg-white px-6 py-3 font-medium text-black transition hover:bg-neutral-200 disabled:opacity-50"
           >
-            {loading ? "Authenticating..." : "Sign in with Passkey"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-neutral-500">

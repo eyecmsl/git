@@ -1,14 +1,50 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from config import config
 from app import db
 from app.models.user import User, UserRole
 from app.utils.errors import AppError
+
+_PASSPHRASE_WORDS = [
+    "archer", "autumn", "badger", "bandit", "basin", "bison", "bloom", "bluff",
+    "bonus", "breeze", "brook", "cabin", "cactus", "camel", "canal", "canyon",
+    "cape", "cargo", "cedar", "cherry", "cider", "coral", "crane", "creek",
+    "crisp", "crown", "crystal", "daisy", "dawn", "delta", "diesel", "dove",
+    "draft", "dune", "eagle", "ember", "fable", "falcon", "fawn", "fence",
+    "fern", "fiber", "field", "flame", "flint", "flour", "flower", "forest",
+    "fossil", "frost", "frozen", "gadget", "garden", "gem", "glacier", "glade",
+    "glimpse", "glow", "grain", "gravel", "grove", "guitar", "gulf", "harbor",
+    "haven", "haze", "hollow", "horizon", "humble", "iceberg", "insect", "iris",
+    "iron", "ivory", "jade", "jewel", "jungle", "kettle", "knight", "ladder",
+    "lagoon", "lake", "lark", "lilac", "lily", "lodge", "lunar", "magnolia",
+    "maple", "marble", "meadow", "mist", "mocha", "monarch", "moon", "morning",
+    "mosaic", "moss", "mountain", "mystic", "nebula", "noble", "north", "oak",
+    "oasis", "ocean", "olive", "onyx", "opal", "orbit", "oriole", "osprey",
+    "owl", "paddle", "palm", "panda", "pastel", "peak", "pearl", "pebble",
+    "petal", "pine", "pixel", "plain", "planet", "plum", "plume", "pond",
+    "prairie", "puma", "pyramid", "quartz", "rabbit", "radish", "rain", "raven",
+    "reef", "ridge", "river", "robin", "rocket", "rose", "ruby", "rufus",
+    "sage", "sail", "sakura", "sapphire", "satin", "scout", "shadow", "sierra",
+    "silver", "sketch", "solar", "spark", "spiral", "spring", "star", "steel",
+    "storm", "stream", "summit", "sun", "surf", "swamp", "swan", "swift",
+    "talon", "tangy", "thistle", "thorn", "tide", "tiger", "topaz", "trail",
+    "tulip", "tundra", "turbo", "turtle", "valley", "velvet", "violet", "vortex",
+    "water", "wave", "whale", "willow", "winter", "wisp", "wolf", "wombat",
+    "yacht", "yonder", "zenith", "zephyr",
+]
+
+GENERATED_PASSPHRASE_LENGTH = 5
+
+
+def generate_passphrase() -> str:
+    return "-".join(secrets.choice(_PASSPHRASE_WORDS) for _ in range(GENERATED_PASSPHRASE_LENGTH))
 
 
 def _generate_token(user_id: str, role: str, expires_delta: int, token_type: str) -> str:
@@ -52,7 +88,7 @@ def refresh_access_token(refresh_token: str) -> str:
     return create_access_token(user.id, user.role)
 
 
-def create_user(email: str, display_name: str) -> User:
+def register_with_passphrase(email: str, display_name: str) -> tuple[User, str]:
     existing = User.query.filter_by(email=email).first()
     if existing:
         raise AppError("Email already registered", status=409, code="email_exists")
@@ -60,9 +96,30 @@ def create_user(email: str, display_name: str) -> User:
     is_first = User.query.count() == 0
     role = UserRole.OWNER if is_first else UserRole.USER
 
-    user = User(id=str(uuid.uuid4()), email=email, display_name=display_name, role=role)
+    passphrase = generate_passphrase()
+    user = User(
+        id=str(uuid.uuid4()),
+        email=email,
+        display_name=display_name,
+        password_hash=generate_password_hash(passphrase),
+        role=role,
+    )
     db.session.add(user)
     db.session.commit()
+    return user, passphrase
+
+
+def login_with_passphrase(email: str, passphrase: str) -> User:
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        raise AppError("Invalid email or passphrase", status=401, code="invalid_credentials")
+
+    if not user.password_hash:
+        raise AppError("No passphrase set for this account", status=401, code="no_passphrase")
+
+    if not check_password_hash(user.password_hash, passphrase):
+        raise AppError("Invalid email or passphrase", status=401, code="invalid_credentials")
+
     return user
 
 
