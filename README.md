@@ -8,7 +8,7 @@ Authentication app with system-generated passphrases and progressive role-based 
 - **Backend:** Flask + SQLAlchemy + Werkzeug (bcrypt)
 - **Auth:** System-generated passphrases with JWT access/refresh tokens
 - **Migrations:** Flask-Migrate (Alembic)
-- **Security:** Cloudflare Turnstile → self-hosted SHA-256 PoW fallback → flask-limiter
+- **Security:** Self-hosted SHA-256 PoW → flask-limiter (Turnstile opt-in for production)
 - **Roles:** owner → admin → user (set at registration, first user is owner)
 
 ## Quick Start
@@ -36,33 +36,32 @@ Open http://localhost:3000 — the first user to register becomes **owner**.
 
 ## Security
 
-Requests are protected by a three-tier defense:
+Requests are protected by a two-tier defense:
 
-| Tier | Mechanism | Scope | Fallback |
-|------|-----------|-------|----------|
-| 1 | Cloudflare Turnstile (invisible) | Register + login forms | Automatic PoW fallback |
-| 2 | Self-hosted SHA-256 PoW | Same endpoints | HMAC-signed nonces, 2-min TTL |
-| 3 | flask-limiter (in-memory) | 10/min register, 20/min login | Always-on safety net |
+| Tier | Mechanism | Scope | Notes |
+|------|-----------|-------|-------|
+| 1 | Self-hosted SHA-256 PoW | Register + login forms | HMAC-signed nonces, 2-min TTL |
+| 2 | flask-limiter (in-memory) | 10/min register, 20/min login | Always-on safety net |
 
-### Turnstile (primary)
-An invisible Cloudflare Turnstile widget (`execution="execute"`) runs a browser
-challenge on form submit and sends the token as `turnstile_token`. The backend
-validates it via Cloudflare's Siteverify API.
-
-### PoW fallback (when Turnstile is down)
-If the Turnstile widget fails to load or the Siteverify request times out, the
-frontend requests a challenge from `POST /api/v1/challenge` and solves a SHA-256
-proof-of-work in the browser (Web Crypto API). The solution is submitted as
-`pow_token` and verified on the backend using HMAC-SHA256 signed nonces.
+### Proof of Work (primary)
+Before each register/login request, the frontend fetches a challenge from
+`POST /api/v1/challenge` and solves a SHA-256 proof-of-work in the browser
+(Web Crypto API, difficulty 16 ≈ 100–500ms). The solution is submitted as
+`pow_token` and verified on the backend using HMAC-SHA256 signed nonces
+(2-minute TTL). No external dependencies are required.
 
 ### Rate limiting
 flask-limiter runs in-memory (no Redis needed) — 10 requests/minute on register,
 20/minute on login. This is always active as a safety net.
 
-> **Dev keys:** The default `TURNSTILE_SECRET_KEY` (`0x...`) and
-> `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (`1x...`) are Cloudflare test keys that always
-> pass. Replace with real keys from https://dash.cloudflare.com/?to=/:account/turnstile
-> before deploying to production. The PoW fallback works regardless.
+### Cloudflare Turnstile (optional, production only)
+Turnstile is **disabled by default** for local development. To enable it, set
+`TURNSTILE_ENABLED=true` in `backend/.env` and `NEXT_PUBLIC_TURNSTILE_ENABLED=true`
+in `frontend/.env.local`, then replace the test keys with real keys from
+https://dash.cloudflare.com/?to=/:account/turnstile.
+
+When enabled, an invisible Turnstile widget runs ahead of the PoW challenge.
+If the Turnstile API is unreachable, the client falls back to PoW automatically.
 
 ## How It Works
 
@@ -111,8 +110,8 @@ tea/
 │   └── run.py                   # Entry point
 ├── frontend/
 │   ├── app/
-│   │   ├── login/               # Login page (passphrase + Turnstile/PoW)
-│   │   ├── register/            # Register page (passphrase reveal)
+│   │   ├── login/               # Login page (passphrase + PoW, optional Turnstile)
+│   │   ├── register/            # Register page (passphrase reveal + PoW)
 │   │   ├── dashboard/           # Role-based dashboard
 │   │   └── admin/               # User management (owner)
 │   ├── lib/
@@ -127,11 +126,11 @@ tea/
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | /auth/register | — | Register (email + display_name + turnstile_token or pow_token) |
-| POST | /auth/login | — | Login (email + passphrase + turnstile_token or pow_token) |
+| POST | /auth/register | — | Register (email + display_name + pow_token; optional turnstile_token) |
+| POST | /auth/login | — | Login (email + passphrase + pow_token; optional turnstile_token) |
 | POST | /auth/refresh | — | Refresh expired access token |
 | GET | /auth/me | Bearer | Get current user profile |
-| POST | /challenge | — | Get SHA-256 PoW challenge (for Turnstile fallback) |
+| POST | /challenge | — | Get SHA-256 PoW challenge |
 | POST | /challenge/verify | — | Verify a PoW solution server-side |
 | GET | /admin/users | owner/admin | List all users |
 | PATCH | /admin/users/:id/role | owner | Change user role (admin/user) |

@@ -25,15 +25,16 @@ from app.utils.errors import AppError
 
 
 def _validate_security(token: str, pow_token: str) -> None:
-    secret = current_app.config["TURNSTILE_SECRET_KEY"]
-    remote_ip = request.remote_addr
+    if current_app.config.get("TURNSTILE_ENABLED", False):
+        secret = current_app.config["TURNSTILE_SECRET_KEY"]
+        remote_ip = request.remote_addr
 
-    if token:
-        result = verify_turnstile_token(token, secret, remote_ip)
-        if result is True:
-            return
-        if result is not None:
-            raise AppError(429, "Security verification failed. Please try again.")
+        if token:
+            result = verify_turnstile_token(token, secret, remote_ip)
+            if result is True:
+                return
+            if result is not None:
+                raise AppError(429, "Security verification failed. Please try again.")
 
     if pow_token:
         try:

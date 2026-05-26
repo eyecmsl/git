@@ -10,6 +10,7 @@ import { getPowToken } from "@/lib/pow";
 export default function RegisterPage() {
   const router = useRouter();
   const { user, loading: authLoading, setUser } = useAuth();
+  const turnstileEnabled = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
   const turnstileRef = useRef<TurnstileInstance>(null);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -21,7 +22,7 @@ export default function RegisterPage() {
   const [turnstileReady, setTurnstileReady] = useState(false);
 
   const tryGetTurnstileToken = useCallback(async (): Promise<string> => {
-    if (!turnstileReady || !turnstileRef.current) return "";
+    if (!turnstileEnabled || !turnstileReady || !turnstileRef?.current) return "";
     turnstileRef.current.execute();
     const timeout = new Promise<string>((_, reject) =>
       setTimeout(() => reject(new Error("timeout")), 5000)
@@ -35,7 +36,7 @@ export default function RegisterPage() {
     } catch {
       return "";
     }
-  }, [turnstileReady]);
+  }, [turnstileEnabled, turnstileReady, turnstileRef]);
 
   if (authLoading) {
     return (
@@ -53,10 +54,14 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const turnstileToken = await tryGetTurnstileToken();
       const payload: Record<string, string> = { email, display_name: displayName };
-      payload[turnstileToken ? "turnstile_token" : "pow_token"] =
-        turnstileToken || await getPowToken();
+      if (turnstileEnabled) {
+        const turnstileToken = await tryGetTurnstileToken();
+        payload[turnstileToken ? "turnstile_token" : "pow_token"] =
+          turnstileToken || await getPowToken();
+      } else {
+        payload["pow_token"] = await getPowToken();
+      }
 
       const data = await api.post<{
         access_token: string;
@@ -68,7 +73,7 @@ export default function RegisterPage() {
       setPendingTokens({ access: data.access_token, refresh: data.refresh_token, user: data.user });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
-      turnstileRef.current?.reset();
+      turnstileRef?.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -142,13 +147,15 @@ export default function RegisterPage() {
             required
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 outline-none focus:border-white"
           />
-          <Turnstile
-            ref={turnstileRef}
-            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-            onLoad={() => setTurnstileReady(true)}
-            onError={() => setTurnstileReady(false)}
-            options={{ execution: "execute", size: "invisible" }}
-          />
+          {turnstileEnabled && (
+            <Turnstile
+              ref={turnstileRef}
+              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+              onLoad={() => setTurnstileReady(true)}
+              onError={() => setTurnstileReady(false)}
+              options={{ execution: "execute", size: "invisible" }}
+            />
+          )}
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
