@@ -8,7 +8,7 @@ Authentication app with system-generated passphrases and progressive role-based 
 - **Backend:** Flask + SQLAlchemy + Werkzeug (bcrypt)
 - **Auth:** System-generated passphrases with JWT access/refresh tokens
 - **Migrations:** Flask-Migrate (Alembic)
-- **Security:** Self-hosted SHA-256 PoW → flask-limiter (Turnstile opt-in for production)
+- **Security:** Optional — all protections disabled by default for local development
 - **Roles:** owner → admin → user (set at registration, first user is owner)
 
 ## Quick Start
@@ -36,32 +36,15 @@ Open http://localhost:3000 — the first user to register becomes **owner**.
 
 ## Security
 
-Requests are protected by a two-tier defense:
+All security layers are **disabled by default** for local development.
+To enable them, set `TURNSTILE_ENABLED=true` in both `backend/.env` and
+`frontend/.env.local`, remove `RATELIMIT_ENABLED=false`, and replace the
+test Turnstile keys with real keys from Cloudflare.
 
-| Tier | Mechanism | Scope | Notes |
-|------|-----------|-------|-------|
-| 1 | Self-hosted SHA-256 PoW | Register + login forms | HMAC-signed nonces, 2-min TTL |
-| 2 | flask-limiter (in-memory) | 10/min register, 20/min login | Always-on safety net |
-
-### Proof of Work (primary)
-Before each register/login request, the frontend fetches a challenge from
-`POST /api/v1/challenge` and solves a SHA-256 proof-of-work in the browser
-(Web Crypto API, difficulty 16 ≈ 100–500ms). The solution is submitted as
-`pow_token` and verified on the backend using HMAC-SHA256 signed nonces
-(2-minute TTL). No external dependencies are required.
-
-### Rate limiting
-flask-limiter runs in-memory (no Redis needed) — 10 requests/minute on register,
-20/minute on login. This is always active as a safety net.
-
-### Cloudflare Turnstile (optional, production only)
-Turnstile is **disabled by default** for local development. To enable it, set
-`TURNSTILE_ENABLED=true` in `backend/.env` and `NEXT_PUBLIC_TURNSTILE_ENABLED=true`
-in `frontend/.env.local`, then replace the test keys with real keys from
-https://dash.cloudflare.com/?to=/:account/turnstile.
-
-When enabled, an invisible Turnstile widget runs ahead of the PoW challenge.
-If the Turnstile API is unreachable, the client falls back to PoW automatically.
+| Layer | Mechanism | Default | How to enable |
+|-------|-----------|---------|---------------|
+| Bot detection | Cloudflare Turnstile + PoW fallback | Disabled | `TURNSTILE_ENABLED=true` |
+| Rate limiting | flask-limiter (in-memory) | Disabled | Remove `RATELIMIT_ENABLED=false` |
 
 ## How It Works
 

@@ -59,8 +59,6 @@ export default function RegisterPage() {
         const turnstileToken = await tryGetTurnstileToken();
         payload[turnstileToken ? "turnstile_token" : "pow_token"] =
           turnstileToken || await getPowToken();
-      } else {
-        payload["pow_token"] = await getPowToken();
       }
 
       const data = await api.post<{

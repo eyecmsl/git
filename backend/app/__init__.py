@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -18,8 +20,10 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = config.secret_key
     app.config["SQLALCHEMY_DATABASE_URI"] = config.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["TURNSTILE_ENABLED"] = config.turnstile_enabled
     app.config["TURNSTILE_SECRET_KEY"] = config.turnstile_secret_key
     app.config["POW_DIFFICULTY"] = config.pow_difficulty
+    app.config["RATELIMIT_ENABLED"] = os.getenv("RATELIMIT_ENABLED", "false").lower() in ("1", "true", "yes")
 
     CORS(app, origins=[config.origin], supports_credentials=True)
     db.init_app(app)
