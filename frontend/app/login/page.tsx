@@ -17,16 +17,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
 
-  if (authLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </main>
-    );
-  }
-
-  if (user) return null;
-
   const tryGetTurnstileToken = useCallback(async (): Promise<string> => {
     if (!turnstileReady || !turnstileRef.current) return "";
     turnstileRef.current.execute();
@@ -43,6 +33,16 @@ export default function LoginPage() {
       return "";
     }
   }, [turnstileReady]);
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
+      </main>
+    );
+  }
+
+  if (user) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
