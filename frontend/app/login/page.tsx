@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useAuth } from "@/lib/auth";
@@ -16,7 +16,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
-  const [cfAvailable, setCfAvailable] = useState<boolean | null>(null);
 
   if (authLoading) {
     return (
@@ -28,25 +27,33 @@ export default function LoginPage() {
 
   if (user) return null;
 
+  const tryGetTurnstileToken = useCallback(async (): Promise<string> => {
+    if (!turnstileReady || !turnstileRef.current) return "";
+    turnstileRef.current.execute();
+    const timeout = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 5000)
+    );
+    try {
+      const token = await Promise.race([
+        turnstileRef.current.getResponsePromise(),
+        timeout,
+      ]);
+      return token ?? "";
+    } catch {
+      return "";
+    }
+  }, [turnstileReady]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      let turnstileToken = "";
-      if (cfAvailable !== false && turnstileRef.current) {
-        turnstileRef.current.execute();
-        turnstileToken = await turnstileRef.current.getResponsePromise() ?? "";
-      }
-
+      const turnstileToken = await tryGetTurnstileToken();
       const payload: Record<string, string> = { email, passphrase };
-
-      if (turnstileToken) {
-        payload.turnstile_token = turnstileToken;
-      } else {
-        payload.pow_token = await getPowToken();
-      }
+      payload[turnstileToken ? "turnstile_token" : "pow_token"] =
+        turnstileToken || await getPowToken();
 
       const data = await api.post<{
         access_token: string;
@@ -89,8 +96,8 @@ export default function LoginPage() {
           <Turnstile
             ref={turnstileRef}
             siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-            onLoad={() => { setTurnstileReady(true); setCfAvailable(true); }}
-            onError={() => { setTurnstileReady(false); setCfAvailable(false); }}
+            onLoad={() => setTurnstileReady(true)}
+            onError={() => setTurnstileReady(false)}
             options={{ execution: "execute", size: "invisible" }}
           />
           {error && <p className="text-sm text-red-400">{error}</p>}
