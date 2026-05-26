@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
   const { user, loading: authLoading, setUser } = useAuth();
+  const turnstileRef = useRef<TurnstileInstance>(null);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -15,12 +17,7 @@ export default function RegisterPage() {
   const [generatedPassphrase, setGeneratedPassphrase] = useState<string | null>(null);
   const [pendingTokens, setPendingTokens] = useState<{ access: string; refresh: string; user: { id: string; email: string; display_name: string; role: string; avatar_url: string | null } } | null>(null);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && user) {
-      router.push("/dashboard");
-    }
-  }, [user, authLoading, router]);
+  const [turnstileReady, setTurnstileReady] = useState(false);
 
   if (authLoading) {
     return (
@@ -35,6 +32,19 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!turnstileRef.current) {
+      setError("Security check not ready. Please wait.");
+      return;
+    }
+
+    turnstileRef.current.execute();
+    const token = await turnstileRef.current.getResponsePromise();
+    if (!token) {
+      setError("Security verification failed. Please try again.");
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await api.post<{
@@ -42,11 +52,12 @@ export default function RegisterPage() {
         refresh_token: string;
         passphrase: string;
         user: { id: string; email: string; display_name: string; role: string; avatar_url: string | null };
-      }>("/auth/register", { email, display_name: displayName });
+      }>("/auth/register", { email, display_name: displayName, turnstile_token: token });
       setGeneratedPassphrase(data.passphrase);
       setPendingTokens({ access: data.access_token, refresh: data.refresh_token, user: data.user });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
+      turnstileRef.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -120,10 +131,17 @@ export default function RegisterPage() {
             required
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 outline-none focus:border-white"
           />
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+            onLoad={() => setTurnstileReady(true)}
+            onError={() => setTurnstileReady(false)}
+            options={{ execution: "execute", size: "invisible" }}
+          />
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !turnstileReady}
             className="rounded-lg bg-white px-6 py-3 font-medium text-black transition hover:bg-neutral-200 disabled:opacity-50"
           >
             {loading ? "Creating..." : "Create Account"}

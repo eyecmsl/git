@@ -26,6 +26,7 @@ class Config:
     rp_name: str = os.getenv("RP_NAME", "Tea App")
     origin: str = os.getenv("ORIGIN", "http://localhost:3000")
     bcrypt_rounds: int = 12
+    turnstile_secret_key: str = field(default_factory=lambda: os.getenv("TURNSTILE_SECRET_KEY", "0x000000000000000000000000000000000000000"))
 
 
 config = Config()
