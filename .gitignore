@@ -1,0 +1,14 @@
+backend/.venv/
+backend/instance/
+backend/*.db
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.pyc
+__pycache__/
+.DS_Store
+*.egg-info/
+dist/
+build/
+.env
+.env.local

@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Config:
+    secret_key: str = field(default_factory=lambda: os.getenv("SECRET_KEY", "dev-key"))
+    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///tea.db"))
+    redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", "dev-jwt-secret"))
+    jwt_access_expires: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "900"))
+    jwt_refresh_expires: int = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", "2592000"))
+    rp_id: str = os.getenv("RP_ID", "localhost")
+    rp_name: str = os.getenv("RP_NAME", "Tea App")
+    origin: str = os.getenv("ORIGIN", "http://localhost:3000")
+    bcrypt_rounds: int = 12
+
+
+config = Config()
