@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import request, jsonify, g, current_app
 
 from app.api import api_bp
+from app import limiter
 from app.middleware.auth_middleware import require_auth, require_role
 from app.schemas.auth import (
     RegisterPassphraseRequest,
@@ -19,20 +20,40 @@ from app.services.auth_service import (
     update_user_role,
 )
 from app.services.turnstile_service import verify_turnstile_token
+from app.services.pow_service import verify_challenge
 from app.utils.errors import AppError
 
 
-def _validate_turnstile(token: str) -> None:
+def _validate_security(token: str, pow_token: str) -> None:
     secret = current_app.config["TURNSTILE_SECRET_KEY"]
     remote_ip = request.remote_addr
-    if not verify_turnstile_token(token, secret, remote_ip):
-        raise AppError(429, "Security verification failed. Please try again.")
+
+    if token:
+        result = verify_turnstile_token(token, secret, remote_ip)
+        if result is True:
+            return
+        if result is not None:
+            raise AppError(429, "Security verification failed. Please try again.")
+
+    if pow_token:
+        try:
+            parts = pow_token.split(":", 5)
+            if len(parts) != 6:
+                raise ValueError("Invalid pow_token format")
+            challenge_id, solution, nonce, difficulty, expires_at, sig = parts
+            if verify_challenge(challenge_id, solution, nonce, int(difficulty), int(expires_at), sig, current_app.config["SECRET_KEY"]):
+                return
+        except (ValueError, IndexError) as e:
+            raise AppError(400, f"Invalid pow_token: {e}") from e
+
+    raise AppError(429, "Security verification failed. Please try again.")
 
 
 @api_bp.post("/auth/register")
+@limiter.limit("10 per minute")
 def register():
     body = RegisterPassphraseRequest(**request.get_json())
-    _validate_turnstile(body.turnstile_token)
+    _validate_security(body.turnstile_token, body.pow_token)
     user, passphrase = register_with_passphrase(body.email, body.display_name)
     access_token = create_access_token(user.id, user.role)
     refresh_token = create_refresh_token(user.id)
@@ -40,9 +61,10 @@ def register():
 
 
 @api_bp.post("/auth/login")
+@limiter.limit("20 per minute")
 def login():
     body = LoginPassphraseRequest(**request.get_json())
-    _validate_turnstile(body.turnstile_token)
+    _validate_security(body.turnstile_token, body.pow_token)
     user = login_with_passphrase(body.email, body.passphrase)
     access_token = create_access_token(user.id, user.role)
     refresh_token = create_refresh_token(user.id)

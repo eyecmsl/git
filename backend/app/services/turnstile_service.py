@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 
 
-def verify_turnstile_token(token: str, secret_key: str, remote_ip: str | None = None) -> bool:
+def verify_turnstile_token(token: str, secret_key: str, remote_ip: str | None = None) -> bool | None:
+    if not token:
+        return None
+
     data = {
         "secret": secret_key,
         "response": token,
@@ -24,7 +28,6 @@ def verify_turnstile_token(token: str, secret_key: str, remote_ip: str | None = 
         with urlopen(req, timeout=10) as resp:
             result = resp.read().decode()
     except Exception:
-        return False
+        return None
 
-    import json
     return json.loads(result).get("success", False)

@@ -27,6 +27,7 @@ class Config:
     origin: str = os.getenv("ORIGIN", "http://localhost:3000")
     bcrypt_rounds: int = 12
     turnstile_secret_key: str = field(default_factory=lambda: os.getenv("TURNSTILE_SECRET_KEY", "0x000000000000000000000000000000000000000"))
+    pow_difficulty: int = int(os.getenv("POW_DIFFICULTY", "16"))
 
 
 config = Config()
