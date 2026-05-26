@@ -27,6 +27,14 @@ def create_app() -> Flask:
     from app.api import api_bp
     app.register_blueprint(api_bp, url_prefix="/api/v1")
 
+    @app.after_request
+    def security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
     @app.get("/health")
     def health():
         return {"status": "ok"}

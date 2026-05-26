@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import request, jsonify, g
 
 from app.api import api_bp
+from app import limiter
 from app.middleware.auth_middleware import require_auth, require_role
 from app.schemas.auth import (
     RegisterPassphraseRequest,
@@ -31,6 +32,7 @@ def register():
 
 
 @api_bp.post("/auth/login")
+@limiter.limit("10 per minute")
 def login():
     body = LoginPassphraseRequest(**request.get_json())
     user = login_with_passphrase(body.email, body.passphrase)
