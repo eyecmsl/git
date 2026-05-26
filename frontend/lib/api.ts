@@ -28,9 +28,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
     throw new ApiError(401, "Unauthorized");
   }
 
