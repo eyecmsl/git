@@ -4,7 +4,7 @@ import { AuthProvider } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Tea",
-  description: "Tea - Modern Authentication",
+  description: "Study materials, curated.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

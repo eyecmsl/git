@@ -1,35 +1,38 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 
-const ROLE_HIERARCHY: Record<string, number> = {
-  owner: 0,
-  admin: 1,
-  user: 2,
-};
+function CurrentTime() {
+  const [time, setTime] = useState(new Date());
 
-function Section({
-  label,
-  minLevel,
-  userLevel,
-  children,
-}: {
-  label: string;
-  minLevel: number;
-  userLevel: number;
-  children: React.ReactNode;
-}) {
-  if (userLevel > minLevel) return null;
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
-    <section className="w-full max-w-sm rounded-lg border border-neutral-800 bg-neutral-900 p-6">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-500">
-        {label}
-      </p>
-      {children}
-    </section>
+    <p className="text-5xl font-light tabular-nums tracking-tight">
+      {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      <span className="text-3xl text-neutral-500">
+        :{time.getSeconds().toString().padStart(2, "0")}
+      </span>
+    </p>
+  );
+}
+
+function Greeting({ name }: { name: string }) {
+  const hour = new Date().getHours();
+  let period: string;
+  if (hour < 12) period = "morning";
+  else if (hour < 17) period = "afternoon";
+  else period = "evening";
+
+  return (
+    <p className="text-lg text-neutral-400">
+      Good {period}, <span className="text-neutral-100">{name}</span>
+    </p>
   );
 }
 
@@ -53,55 +56,43 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const level = ROLE_HIERARCHY[user.role] ?? 2;
-
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 p-8">
-      <h1 className="mb-4 text-3xl font-bold">Dashboard</h1>
-
-      <Section label="A — System" minLevel={0} userLevel={level}>
-        <p className="mb-4 text-sm text-neutral-400">Full system administration.</p>
-        <Link
-          href="/admin"
-          className="inline-block rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium transition hover:bg-neutral-800"
-        >
-          User Management
-        </Link>
-      </Section>
-
-      <Section label="B — Administration" minLevel={1} userLevel={level}>
-        <p className="mb-4 text-sm text-neutral-400">Administrative tools.</p>
-        <Link
-          href="/admin"
-          className="inline-block rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium transition hover:bg-neutral-800"
-        >
-          Admin Panel
-        </Link>
-      </Section>
-
-      <Section label="C — Account" minLevel={2} userLevel={level}>
-        <p className="mb-3 text-sm text-neutral-400">Email</p>
-        <p className="mb-4 font-medium">{user.email}</p>
-        <p className="mb-3 text-sm text-neutral-400">Display Name</p>
-        <p className="mb-4 font-medium">{user.display_name}</p>
-        <p className="mb-3 text-sm text-neutral-400">Role</p>
-        <p className="mb-4">
-          <span className="rounded bg-neutral-800 px-2 py-0.5 text-sm font-medium capitalize">
-            {user.role}
-          </span>
-        </p>
-        <p className="mb-3 text-sm text-neutral-400">User ID</p>
-        <p className="mb-4 font-mono text-sm text-neutral-300">{user.id}</p>
+    <main className="flex min-h-screen flex-col items-center p-8">
+      <div className="flex w-full max-w-2xl items-start justify-between">
+        <div>
+          <Greeting name={user.display_name} />
+          <CurrentTime />
+        </div>
         <button
           onClick={() => {
             logout();
             router.push("/login");
           }}
-          className="mt-2 rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium transition hover:bg-neutral-800"
+          className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-500 transition hover:border-neutral-700 hover:text-neutral-300"
         >
-          Sign Out
+          Sign out
         </button>
-      </Section>
+      </div>
+
+      <div className="mt-24 grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
+          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+            Study Materials
+          </p>
+          <p className="mt-2 text-sm text-neutral-400">
+            Your study resources will appear here.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
+          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+            Progress
+          </p>
+          <p className="mt-2 text-sm text-neutral-400">
+            Track your learning progress.
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
