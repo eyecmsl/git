@@ -73,8 +73,18 @@ def create_resource(
         requires_membership=requires_membership,
         uploader_id=uploader_id,
     )
+
+    from app.services.search_service import extract_text_from_file
+    search_text = extract_text_from_file(file_path, ext)
+    if search_text:
+        resource.search_text = search_text[:50000]
+
     db.session.add(resource)
     db.session.commit()
+
+    from app.services.thumbnail_service import generate_thumbnail
+    generate_thumbnail(saved_name, ext)
+
     return resource
 
 
@@ -118,7 +128,7 @@ def get_all_resources(search: str = "", category: str = "", sort_by: str = "crea
 
     if search:
         query = query.filter(
-            Resource.title.ilike(f"%{search}%") | Resource.description.ilike(f"%{search}%")
+            Resource.title.ilike(f"%{search}%") | Resource.description.ilike(f"%{search}%") | Resource.search_text.ilike(f"%{search}%")
         )
     if category:
         query = query.filter(Resource.category == category)

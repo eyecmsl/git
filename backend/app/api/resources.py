@@ -69,6 +69,8 @@ def get_resource(resource_id: str):
         raise AppError("Resource not found", status=404, code="resource_not_found")
     check_resource_access(resource_id, g.current_user.id)
     increment_view_count(resource_id)
+    from app.services.recently_viewed_service import record_view
+    record_view(g.current_user.id, resource_id)
     return jsonify({"resource": resource.to_dict()})
 
 
@@ -132,6 +134,8 @@ def download_resource(resource_id: str):
         if not verify_resource_password(resource_id, password):
             raise AppError("Invalid password", status=403, code="invalid_password")
     increment_download_count(resource_id)
+    from app.services.download_history_service import record_download
+    record_download(g.current_user.id, resource_id)
     return jsonify({"download_url": f"/uploads/{resource.file_path}", "file_path": resource.file_path})
 
 

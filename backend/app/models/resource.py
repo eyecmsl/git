@@ -21,6 +21,7 @@ class Resource(db.Model):
     is_password_protected = db.Column(db.Boolean, nullable=False, default=False)
     password_hash = db.Column(db.String(256), nullable=True)
     requires_membership = db.Column(db.Boolean, nullable=False, default=False)
+    search_text = db.Column(db.Text, nullable=True)
     uploader_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
     download_count = db.Column(db.Integer, nullable=False, default=0)
     view_count = db.Column(db.Integer, nullable=False, default=0)

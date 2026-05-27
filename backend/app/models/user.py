@@ -21,6 +21,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=True)
     role = db.Column(db.String(16), nullable=False, default=UserRole.USER)
     avatar_url = db.Column(db.Text, nullable=True)
+    bio = db.Column(db.Text, nullable=True, default="")
+    theme_preference = db.Column(db.String(16), nullable=False, default="dark")
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -33,5 +35,7 @@ class User(db.Model):
             "display_name": self.display_name,
             "role": self.role,
             "avatar_url": self.avatar_url,
+            "bio": self.bio,
+            "theme_preference": self.theme_preference,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

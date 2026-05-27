@@ -30,7 +30,13 @@ interface Membership {
   membership_type: string; is_active: boolean; created_at: string; expires_at: string | null;
 }
 
-type Tab = "users" | "resources" | "memberships";
+interface AuditLogEntry {
+  id: string; user_name: string | null; action: string; resource_type: string | null; details: string | null; created_at: string;
+}
+interface TagEntity { id: string; name: string; slug: string; }
+interface VersionEntry { id: string; version_number: number; file_size: number | null; file_type: string | null; notes: string | null; created_at: string; }
+
+type Tab = "users" | "resources" | "memberships" | "audit" | "versions";
 
 function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", danger = true }: {
   message: string; onConfirm: () => void; onCancel: () => void; confirmLabel?: string; danger?: boolean;
@@ -84,7 +90,17 @@ export default function AdminPage() {
   const [grantType, setGrantType] = useState("manual");
   const [granting, setGranting] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [tagsList, setTagsList] = useState<TagEntity[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [selectedResourceForVersions, setSelectedResourceForVersions] = useState<string | null>(null);
+  const [versionNotes, setVersionNotes] = useState("");
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkUploading, setBulkUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -95,16 +111,11 @@ export default function AdminPage() {
   async function loadData() {
     setBusy(true);
     try {
-      if (tab === "users") {
-        const data = await api.get<{ users: User[] }>("/admin/users");
-        setUsers(data.users);
-      } else if (tab === "memberships") {
-        const data = await api.get<{ memberships: Membership[] }>("/memberships");
-        setMemberships(data.memberships);
-      } else {
-        const data = await api.get<{ resources: Resource[] }>("/resources");
-        setResources(data.resources);
-      }
+      if (tab === "users") { const d = await api.get<{ users: User[] }>("/admin/users"); setUsers(d.users); }
+      else if (tab === "memberships") { const d = await api.get<{ memberships: Membership[] }>("/memberships"); setMemberships(d.memberships); }
+      else if (tab === "audit") { const d = await api.get<{ logs: AuditLogEntry[] }>("/admin/audit-logs"); setAuditLogs(d.logs); }
+      else if (tab === "versions") { const d = await api.get<{ tags: TagEntity[] }>("/tags"); setTagsList(d.tags); setSelectedResourceForVersions(null); setVersions([]); }
+      else { const d = await api.get<{ resources: Resource[] }>("/resources"); setResources(d.resources); }
     } catch { router.push("/dashboard"); }
     finally { setBusy(false); }
   }
@@ -159,6 +170,9 @@ export default function AdminPage() {
       const body: Record<string, unknown> = { title: editTitle, description: editDesc, category: editCategory, requires_membership: editRequiresMembership };
       if (editPassword.trim()) body.password = editPassword.trim();
       await api.patch(`/resources/${resourceId}`, body);
+      if (editTags.trim()) {
+        await api.post(`/resources/${resourceId}/tags`, { tags: editTags.split(",").map(s => s.trim()).filter(Boolean) });
+      }
       setEditing(null);
       await loadData();
       addToast("Resource updated", "success");
@@ -202,6 +216,7 @@ export default function AdminPage() {
   function startEdit(r: Resource) {
     setEditing(r.id); setEditTitle(r.title); setEditDesc(r.description || "");
     setEditCategory(r.category || ""); setEditPassword(""); setEditRequiresMembership(r.requires_membership);
+    api.get<{ tags: TagEntity[] }>(`/resources/${r.id}/tags`).then(d => setEditTags(d.tags.map(t => t.name).join(", "))).catch(() => setEditTags(""));
   }
 
   if (loading) { return <main className="flex min-h-screen items-center justify-center"><p className="text-neutral-400">Loading...</p></main>; }
@@ -211,6 +226,8 @@ export default function AdminPage() {
     { key: "users", label: "Users" },
     { key: "resources", label: "Resources" },
     { key: "memberships", label: "Memberships" },
+    ...(user?.role === "owner" ? [{ key: "audit" as Tab, label: "Audit Log" }] : []),
+    { key: "versions", label: "Versions & Tags" },
   ];
 
   return (
@@ -360,8 +377,115 @@ export default function AdminPage() {
             </div>
           )}
 
+          {tab === "audit" && (
+            <div className="rounded-lg border border-neutral-800">
+              <p className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-neutral-500 border-b border-neutral-800">Admin Audit Trail</p>
+              <table className="w-full text-left text-sm">
+                <thead className="bg-neutral-900">
+                  <tr><th className="px-4 py-3 font-medium">Time</th><th className="px-4 py-3 font-medium">User</th><th className="px-4 py-3 font-medium">Action</th><th className="px-4 py-3 font-medium">Details</th></tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {auditLogs.length === 0 ? <tr><td colSpan={4} className="px-4 py-6 text-center text-xs text-neutral-500">No audit logs</td></tr>
+                  : auditLogs.map(l => (
+                    <tr key={l.id} className="hover:bg-neutral-900/50">
+                      <td className="px-4 py-3 text-xs text-neutral-500">{new Date(l.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3">{l.user_name || "—"}</td>
+                      <td className="px-4 py-3"><span className="rounded bg-neutral-800 px-2 py-0.5 text-xs font-medium">{l.action}</span></td>
+                      <td className="px-4 py-3 text-xs text-neutral-400">{l.details || l.resource_type || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "versions" && (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
+                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">Manage Tags</p>
+                <div className="flex gap-2 mb-4">
+                  <input type="text" placeholder="New tag name" value={newTagName} onChange={e => setNewTagName(e.target.value)}
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
+                  <button onClick={async () => {
+                    if (!newTagName.trim()) return;
+                    try { await api.post(`/resources/placeholder/tags`, { tags: [newTagName.trim()] }); addToast("Tag created", "success"); setNewTagName(""); const d = await api.get<{ tags: TagEntity[] }>("/tags"); setTagsList(d.tags); } catch (e) { addToast(e instanceof Error ? e.message : "Failed", "error"); }
+                  }} className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black">Create</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {tagsList.map(t => (
+                    <span key={t.id} className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2.5 py-1 text-xs border border-neutral-700">
+                      {t.name}
+                      <button onClick={async () => { try { await api.delete(`/tags/${t.id}`); setTagsList(prev => prev.filter(x => x.id !== t.id)); addToast("Tag deleted", "success"); } catch (e) { addToast(e instanceof Error ? e.message : "Failed", "error"); } }} className="text-neutral-500 hover:text-red-400 ml-1">&times;</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
+                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">Resource Versions</p>
+                <select value={selectedResourceForVersions || ""} onChange={async e => {
+                  const rid = e.target.value; setSelectedResourceForVersions(rid);
+                  if (rid) { try { const d = await api.get<{ versions: VersionEntry[] }>(`/resources/${rid}/versions`); setVersions(d.versions); } catch { setVersions([]); } } else setVersions([]);
+                }} className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white mb-4">
+                  <option value="">— Select resource —</option>
+                  {resources.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                </select>
+                {selectedResourceForVersions && (
+                  <>
+                    <div className="flex gap-2 mb-4">
+                      <input type="text" placeholder="Version notes" value={versionNotes} onChange={e => setVersionNotes(e.target.value)} className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
+                      <button onClick={async () => {
+                        try { await api.post(`/resources/${selectedResourceForVersions}/versions`, { notes: versionNotes }); setVersionNotes(""); addToast("Version snapshot created", "success"); const d = await api.get<{ versions: VersionEntry[] }>(`/resources/${selectedResourceForVersions}/versions`); setVersions(d.versions); } catch (e) { addToast(e instanceof Error ? e.message : "Failed", "error"); }
+                      }} className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black">Snapshot</button>
+                    </div>
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-neutral-900"><tr><th className="px-4 py-3 font-medium">v#</th><th className="px-4 py-3 font-medium">Size</th><th className="px-4 py-3 font-medium">Notes</th><th className="px-4 py-3 font-medium">Date</th><th className="px-4 py-3 font-medium">Actions</th></tr></thead>
+                      <tbody className="divide-y divide-neutral-800">
+                        {versions.length === 0 ? <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-neutral-500">No versions yet</td></tr>
+                        : versions.map(v => (
+                          <tr key={v.id} className="hover:bg-neutral-900/50">
+                            <td className="px-4 py-3 font-mono text-xs">v{v.version_number}</td>
+                            <td className="px-4 py-3 text-xs">{v.file_size ? formatFileSize(v.file_size) : "—"}</td>
+                            <td className="px-4 py-3 text-xs text-neutral-400">{v.notes || "—"}</td>
+                            <td className="px-4 py-3 text-xs text-neutral-500">{new Date(v.created_at).toLocaleDateString()}</td>
+                            <td className="px-4 py-3">
+                              <button onClick={async () => { try { await api.post(`/versions/${v.id}/restore`); addToast("Version restored", "success"); } catch (e) { addToast(e instanceof Error ? e.message : "Failed", "error"); } }}
+                                className="rounded border border-emerald-800 px-2 py-1 text-xs text-emerald-400 hover:bg-emerald-950">Restore</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {tab === "resources" && (
             <div className="space-y-6">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
+                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">Bulk Upload</p>
+                <div className="flex flex-col gap-3">
+                  <input ref={bulkFileRef} type="file" multiple onChange={e => setBulkFiles(Array.from(e.target.files || []))} className="text-sm text-neutral-400 file:mr-3 file:rounded file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-sm file:text-neutral-200" />
+                  {bulkFiles.length > 0 && <p className="text-xs text-neutral-500">{bulkFiles.length} file(s) selected</p>}
+                  <button disabled={bulkFiles.length === 0 || bulkUploading} onClick={async () => {
+                    setBulkUploading(true);
+                    try {
+                      const form = new FormData();
+                      bulkFiles.forEach(f => form.append("files", f));
+                      const d = await api.post<{ resources: Resource[]; errors: { filename: string; error: string }[]; total: number; failed: number }>("/resources/bulk", form);
+                      addToast(`${d.total} uploaded, ${d.failed} failed`, d.failed > 0 ? "error" : "success");
+                      setBulkFiles([]); if (bulkFileRef.current) bulkFileRef.current.value = "";
+                      await loadData();
+                    } catch (e) { addToast(e instanceof Error ? e.message : "Bulk upload failed", "error"); }
+                    finally { setBulkUploading(false); }
+                  }} className="self-start rounded-lg bg-white px-6 py-2 text-sm font-medium text-black transition hover:bg-neutral-200 disabled:opacity-50">
+                    {bulkUploading ? "Uploading..." : `Upload ${bulkFiles.length} Files`}
+                  </button>
+                </div>
+              </div>
+
               <form onSubmit={handleUpload} className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
                 <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">Upload Resource</p>
                 <div className="flex flex-col gap-3">
@@ -400,6 +524,7 @@ export default function AdminPage() {
                         <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
                         <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
                         <input type="text" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} placeholder="Category" className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
+                        <input type="text" value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder="Tags (comma-separated)" className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
                         <input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="New password (leave blank to keep)" className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white" />
                         <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
                           <input type="checkbox" checked={editRequiresMembership} onChange={(e) => setEditRequiresMembership(e.target.checked)} className="rounded border-neutral-600 bg-neutral-800" />
