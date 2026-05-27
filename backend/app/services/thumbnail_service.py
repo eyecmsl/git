@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import os
-from io import BytesIO
 
-from PIL import Image
 from flask import current_app
 
 _THUMB_SIZE = (320, 240)
@@ -20,12 +18,15 @@ def generate_thumbnail(file_path: str, file_type: str | None) -> str | None:
 
     if file_type and file_type.lower() in ("png", "jpg", "jpeg", "gif", "webp"):
         try:
+            from PIL import Image
             img = Image.open(full_path)
             img.thumbnail(_THUMB_SIZE, Image.LANCZOS)
             if img.mode == "RGBA":
                 img = img.convert("RGB")
             img.save(thumb_path, "JPEG", quality=75)
             return f"/uploads/thumbnails/{thumb_filename}"
+        except ImportError:
+            return None
         except Exception:
             return None
 
