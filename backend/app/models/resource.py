@@ -12,10 +12,13 @@ class Resource(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    category = db.Column(db.String(64), nullable=True, default="")
     file_path = db.Column(db.String(512), nullable=False)
     file_type = db.Column(db.String(64), nullable=True)
     file_size = db.Column(db.Integer, nullable=True)
     uploader_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    download_count = db.Column(db.Integer, nullable=False, default=0)
+    view_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -26,9 +29,12 @@ class Resource(db.Model):
             "id": self.id,
             "title": self.title,
             "description": self.description,
+            "category": self.category,
             "file_path": self.file_path,
             "file_type": self.file_type,
             "file_size": self.file_size,
+            "download_count": self.download_count,
+            "view_count": self.view_count,
             "uploader_id": self.uploader_id,
             "uploader_name": self.uploader.display_name if self.uploader else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -4,6 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { formatFileSize, getFileTypeLabel, getFileTypeColor } from "@/lib/utils";
+
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 
 interface User {
   id: string;
@@ -17,9 +20,12 @@ interface Resource {
   id: string;
   title: string;
   description: string | null;
+  category: string | null;
   file_path: string;
   file_type: string | null;
   file_size: number | null;
+  download_count: number;
+  view_count: number;
   uploader_id: string;
   uploader_name: string | null;
   created_at: string;
@@ -27,6 +33,38 @@ interface Resource {
 }
 
 type Tab = "users" | "resources";
+
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm rounded-lg border border-neutral-800 bg-neutral-950 p-6 shadow-xl">
+        <p className="text-sm text-neutral-300">{message}</p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-neutral-700 px-4 py-2 text-sm transition hover:bg-neutral-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FileTypeBadge({ type }: { type: string | null }) {
+  return (
+    <span className={`inline-block rounded border px-2 py-0.5 text-[10px] font-medium uppercase leading-tight ${getFileTypeColor(type)}`}>
+      {getFileTypeLabel(type)}
+    </span>
+  );
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -38,9 +76,13 @@ export default function AdminPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editCategory, setEditCategory] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDesc, setUploadDesc] = useState("");
+  const [uploadCategory, setUploadCategory] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [fileError, setFileError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -83,18 +125,35 @@ export default function AdminPage() {
     }
   }
 
+  function validateFile(file: File | undefined): boolean {
+    if (!file) {
+      setFileError("Please select a file");
+      return false;
+    }
+    if (file.size > MAX_UPLOAD_SIZE) {
+      setFileError(`File exceeds maximum size of ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB`);
+      return false;
+    }
+    setFileError("");
+    return true;
+  }
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     if (!uploadTitle.trim() || !fileRef.current?.files?.[0]) return;
+    if (!validateFile(fileRef.current.files[0])) return;
+
     setUploading(true);
     try {
       const form = new FormData();
       form.append("title", uploadTitle.trim());
       form.append("description", uploadDesc.trim());
+      form.append("category", uploadCategory.trim());
       form.append("file", fileRef.current.files[0]);
       await api.post("/resources", form);
       setUploadTitle("");
       setUploadDesc("");
+      setUploadCategory("");
       if (fileRef.current) fileRef.current.value = "";
       await loadData();
     } catch (e) {
@@ -109,6 +168,7 @@ export default function AdminPage() {
       await api.patch(`/resources/${resourceId}`, {
         title: editTitle,
         description: editDesc,
+        category: editCategory,
       });
       setEditing(null);
       await loadData();
@@ -118,9 +178,9 @@ export default function AdminPage() {
   }
 
   async function handleDelete(resourceId: string) {
-    if (!confirm("Delete this resource?")) return;
     try {
       await api.delete(`/resources/${resourceId}`);
+      setDeleteTarget(null);
       await loadData();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -131,6 +191,11 @@ export default function AdminPage() {
     setEditing(r.id);
     setEditTitle(r.title);
     setEditDesc(r.description || "");
+    setEditCategory(r.category || "");
+  }
+
+  function handleFileSelect() {
+    setFileError("");
   }
 
   if (loading) {
@@ -150,6 +215,14 @@ export default function AdminPage() {
 
   return (
     <main className="mx-auto max-w-4xl p-8">
+      {deleteTarget && (
+        <ConfirmModal
+          message="Are you sure you want to delete this resource? This action cannot be undone."
+          onConfirm={() => handleDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
       <h1 className="mb-8 text-3xl font-bold">Admin Panel</h1>
 
       <div className="mb-6 flex gap-1 rounded-lg border border-neutral-800 p-1">
@@ -233,11 +306,23 @@ export default function AdminPage() {
                 className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
               />
               <input
-                ref={fileRef}
-                type="file"
-                required
-                className="text-sm text-neutral-400 file:mr-3 file:rounded file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-sm file:text-neutral-200"
+                type="text"
+                placeholder="Category (optional)"
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
+                className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
               />
+              <div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  required
+                  onChange={handleFileSelect}
+                  className="text-sm text-neutral-400 file:mr-3 file:rounded file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-sm file:text-neutral-200"
+                />
+                <p className="mt-1 text-[11px] text-neutral-600">Max size: {MAX_UPLOAD_SIZE / (1024 * 1024)}MB</p>
+                {fileError && <p className="mt-1 text-xs text-red-400">{fileError}</p>}
+              </div>
               <button
                 type="submit"
                 disabled={uploading}
@@ -271,6 +356,13 @@ export default function AdminPage() {
                         onChange={(e) => setEditDesc(e.target.value)}
                         className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
                       />
+                      <input
+                        type="text"
+                        value={editCategory}
+                        onChange={(e) => setEditCategory(e.target.value)}
+                        placeholder="Category"
+                        className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
+                      />
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleSaveEdit(r.id)}
@@ -289,14 +381,18 @@ export default function AdminPage() {
                   ) : (
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{r.title}</p>
+                        <div className="flex items-center gap-2">
+                          <FileTypeBadge type={r.file_type} />
+                        </div>
+                        <p className="mt-2 font-medium">{r.title}</p>
                         {r.description && (
                           <p className="mt-1 text-sm text-neutral-400">{r.description}</p>
                         )}
                         <p className="mt-2 text-xs text-neutral-500">
-                          {r.file_type?.toUpperCase() || "Unknown"}
-                          {r.file_size ? ` · ${(r.file_size / 1024).toFixed(1)} KB` : ""}
+                          {formatFileSize(r.file_size)}
+                          {r.category ? ` · ${r.category}` : ""}
                           {r.uploader_name ? ` · by ${r.uploader_name}` : ""}
+                          {` · ${r.download_count} dl · ${r.view_count} views`}
                         </p>
                       </div>
                       <div className="ml-4 flex shrink-0 gap-2">
@@ -314,7 +410,7 @@ export default function AdminPage() {
                           Edit
                         </button>
                         <button
-                          onClick={() => handleDelete(r.id)}
+                          onClick={() => setDeleteTarget(r.id)}
                           className="rounded border border-red-900 px-3 py-1.5 text-xs text-red-400 transition hover:bg-red-950"
                         >
                           Delete
