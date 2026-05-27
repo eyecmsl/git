@@ -13,3 +13,6 @@ build/
 .env
 .env.local
 frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
+backend/uploads/
+instance/
