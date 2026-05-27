@@ -5,13 +5,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from flask import current_app
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import db
 from app.models.resource import Resource
+from app.services.membership_service import has_active_membership
 from app.utils.errors import AppError
 
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif", "webp", "mp4", "mp3", "zip", "doc", "docx", "txt", "md"}
-MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))  # 50MB default
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
 
 
 def allowed_file(filename: str) -> bool:
@@ -24,7 +26,17 @@ def get_upload_dir() -> str:
     return path
 
 
-def create_resource(title: str, description: str, category: str, file_obj, uploader_id: str) -> Resource:
+def create_resource(
+    title: str,
+    description: str,
+    category: str,
+    file_obj,
+    uploader_id: str,
+    is_compressed: bool = False,
+    original_size: int | None = None,
+    password: str | None = None,
+    requires_membership: bool = False,
+) -> Resource:
     if not file_obj or not file_obj.filename:
         raise AppError("No file provided", status=400, code="no_file")
 
@@ -44,6 +56,7 @@ def create_resource(title: str, description: str, category: str, file_obj, uploa
     file_obj.save(file_path)
 
     file_size = os.path.getsize(file_path)
+    password_hash = generate_password_hash(password) if password else None
 
     resource = Resource(
         id=str(uuid.uuid4()),
@@ -53,6 +66,11 @@ def create_resource(title: str, description: str, category: str, file_obj, uploa
         file_path=saved_name,
         file_type=ext,
         file_size=file_size,
+        original_size=original_size or file_size,
+        is_compressed=is_compressed,
+        is_password_protected=password is not None,
+        password_hash=password_hash,
+        requires_membership=requires_membership,
         uploader_id=uploader_id,
     )
     db.session.add(resource)
@@ -60,7 +78,7 @@ def create_resource(title: str, description: str, category: str, file_obj, uploa
     return resource
 
 
-def update_resource(resource_id: str, title: str | None, description: str | None, category: str | None = None) -> Resource:
+def update_resource(resource_id: str, title: str | None = None, description: str | None = None, category: str | None = None, password: str | None = None, requires_membership: bool | None = None) -> Resource:
     resource = Resource.query.get(resource_id)
     if not resource:
         raise AppError("Resource not found", status=404, code="resource_not_found")
@@ -71,6 +89,11 @@ def update_resource(resource_id: str, title: str | None, description: str | None
         resource.description = description
     if category is not None:
         resource.category = category
+    if password is not None:
+        resource.password_hash = generate_password_hash(password)
+        resource.is_password_protected = True
+    if requires_membership is not None:
+        resource.requires_membership = requires_membership
 
     db.session.commit()
     return resource
@@ -123,6 +146,23 @@ def increment_view_count(resource_id: str) -> None:
 def increment_download_count(resource_id: str) -> None:
     Resource.query.filter_by(id=resource_id).update({Resource.download_count: Resource.download_count + 1})
     db.session.commit()
+
+
+def verify_resource_password(resource_id: str, password: str) -> bool:
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        raise AppError("Resource not found", status=404, code="resource_not_found")
+    if not resource.password_hash:
+        return True
+    return check_password_hash(resource.password_hash, password)
+
+
+def check_resource_access(resource_id: str, user_id: str) -> None:
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        raise AppError("Resource not found", status=404, code="resource_not_found")
+    if resource.requires_membership and not has_active_membership(user_id):
+        raise AppError("Membership required to access this resource", status=403, code="membership_required")
 
 
 def get_popular_resources(limit: int = 5) -> list[Resource]:

@@ -24,6 +24,7 @@ def create_app() -> Flask:
     app.config["TURNSTILE_SECRET_KEY"] = config.turnstile_secret_key
     app.config["POW_DIFFICULTY"] = config.pow_difficulty
     app.config["RATELIMIT_ENABLED"] = os.getenv("RATELIMIT_ENABLED", "false").lower() in ("1", "true", "yes")
+    app.config["ALLOWED_ORIGINS"] = config.allowed_origins
 
     CORS(app, origins=[config.origin], supports_credentials=True)
     db.init_app(app)
@@ -47,8 +48,9 @@ def create_app() -> Flask:
     def security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "0"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         return response
 
     @app.get("/health")

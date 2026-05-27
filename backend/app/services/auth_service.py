@@ -10,6 +10,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from config import config
 from app import db
 from app.models.user import User, UserRole
+from app.services.membership_service import grant_automatic_membership
 from app.utils.errors import AppError
 
 _PASSPHRASE_WORDS = [
@@ -106,6 +107,7 @@ def register_with_passphrase(email: str, display_name: str) -> tuple[User, str]:
     )
     db.session.add(user)
     db.session.commit()
+    grant_automatic_membership(user.id)
     return user, passphrase
 
 

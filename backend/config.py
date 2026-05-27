@@ -29,6 +29,7 @@ class Config:
     turnstile_enabled: bool = os.getenv("TURNSTILE_ENABLED", "false").lower() in ("1", "true", "yes")
     turnstile_secret_key: str = field(default_factory=lambda: os.getenv("TURNSTILE_SECRET_KEY", "0x000000000000000000000000000000000000000"))
     pow_difficulty: int = int(os.getenv("POW_DIFFICULTY", "16"))
+    allowed_origins: list[str] = field(default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","))
 
 
 config = Config()
