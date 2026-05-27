@@ -37,6 +37,12 @@ def create_app() -> Flask:
     from app.utils.errors import register_error_handlers
     register_error_handlers(app)
 
+    with app.app_context():
+        from app.services.membership_service import backfill_memberships
+        count = backfill_memberships()
+        if count:
+            app.logger.info("Backfilled %d missing memberships", count)
+
     upload_dir = os.path.join(app.root_path, "..", "uploads")
     os.makedirs(upload_dir, exist_ok=True)
 

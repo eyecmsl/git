@@ -16,7 +16,7 @@ class User(db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = db.Column(db.String(255), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     display_name = db.Column(db.String(128), nullable=False)
     password_hash = db.Column(db.String(256), nullable=True)
     role = db.Column(db.String(16), nullable=False, default=UserRole.USER)

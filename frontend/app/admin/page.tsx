@@ -80,6 +80,10 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [fileError, setFileError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [grantUserId, setGrantUserId] = useState("");
+  const [grantType, setGrantType] = useState("manual");
+  const [granting, setGranting] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,19 +175,28 @@ export default function AdminPage() {
   }
 
   async function handleGrantMembership(userId: string, type: string) {
+    if (!userId) { addToast("Select a user to grant membership to", "error"); return; }
+    setGranting(true);
     try {
       await api.post("/memberships/grant", { user_id: userId, membership_type: type });
       await loadData();
       addToast(`Membership granted (${type})`, "success");
+      setGrantUserId("");
     } catch (e) { addToast(e instanceof Error ? e.message : "Failed to grant membership", "error"); }
+    finally { setGranting(false); }
   }
 
   async function handleRevokeMembership(userId: string) {
     try {
       await api.post("/memberships/revoke", { user_id: userId });
       await loadData();
+      setRevokeTarget(null);
       addToast("Membership revoked", "success");
     } catch (e) { addToast(e instanceof Error ? e.message : "Failed to revoke membership", "error"); }
+  }
+
+  function getMembershipForUser(userId: string): Membership | undefined {
+    return memberships.find(m => m.user_id === userId);
   }
 
   function startEdit(r: Resource) {
@@ -249,8 +262,16 @@ export default function AdminPage() {
 
           {tab === "memberships" && (
             <div className="space-y-6">
+              {revokeTarget && (
+                <ConfirmModal
+                  message="Revoke this membership? The user will lose access to members-only resources."
+                  onConfirm={() => handleRevokeMembership(revokeTarget)}
+                  onCancel={() => setRevokeTarget(null)}
+                  confirmLabel="Revoke"
+                />
+              )}
               <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
-                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">Manage Memberships</p>
+                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">All Memberships ({memberships.length})</p>
                 <table className="w-full text-left text-sm">
                   <thead className="bg-neutral-900">
                     <tr><th className="px-4 py-3 font-medium">User</th><th className="px-4 py-3 font-medium">Type</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Actions</th></tr>
@@ -261,18 +282,30 @@ export default function AdminPage() {
                     ) : memberships.map((m) => (
                       <tr key={m.id} className="hover:bg-neutral-900/50">
                         <td className="px-4 py-3">{m.user_name || m.user_email || m.user_id}</td>
-                        <td className="px-4 py-3"><span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${
-                          m.membership_type === "permanent" ? "bg-emerald-950/50 text-emerald-400" :
-                          m.membership_type === "automatic" ? "bg-blue-950/50 text-blue-400" :
-                          "bg-yellow-950/50 text-yellow-400"
-                        }`}>{m.membership_type}</span></td>
-                        <td className="px-4 py-3"><span className={`rounded px-2 py-0.5 text-xs font-medium ${m.is_active ? "bg-green-950/50 text-green-400" : "bg-red-950/50 text-red-400"}`}>{m.is_active ? "Active" : "Inactive"}</span></td>
                         <td className="px-4 py-3">
-                          {m.membership_type === "manual" && m.is_active && user.role === "owner" && (
-                            <button onClick={() => handleRevokeMembership(m.user_id)} className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 transition hover:bg-red-950">Revoke</button>
+                          <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${
+                            m.membership_type === "permanent" ? "bg-emerald-950/50 text-emerald-400 border border-emerald-900/50" :
+                            m.membership_type === "automatic" ? "bg-blue-950/50 text-blue-400 border border-blue-900/50" :
+                            "bg-yellow-950/50 text-yellow-400 border border-yellow-900/50"
+                          }`}>{m.membership_type}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded px-2 py-0.5 text-xs font-medium ${m.is_active ? "bg-green-950/50 text-green-400" : "bg-red-950/50 text-red-400"}`}>
+                            {m.is_active ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {m.membership_type === "permanent" && (
+                            <span className="text-[11px] text-emerald-600" title="Cannot be revoked">Permanent</span>
                           )}
                           {m.membership_type === "automatic" && (
-                            <span className="text-[11px] text-neutral-600">Auto</span>
+                            <span className="text-[11px] text-neutral-600">Auto-granted</span>
+                          )}
+                          {m.membership_type === "manual" && m.is_active && user.role === "owner" && (
+                            <button onClick={() => setRevokeTarget(m.user_id)} className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 transition hover:bg-red-950">Revoke</button>
+                          )}
+                          {m.membership_type === "manual" && !m.is_active && (
+                            <button onClick={() => handleGrantMembership(m.user_id, "manual")} className="rounded border border-emerald-800 px-2 py-1 text-xs text-emerald-400 transition hover:bg-emerald-950">Re-grant</button>
                           )}
                         </td>
                       </tr>
@@ -283,24 +316,45 @@ export default function AdminPage() {
 
               {user.role === "owner" && (
                 <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-500">Grant Membership</p>
-                  <p className="mb-4 text-xs text-neutral-500">Select a user from the Users tab to grant a membership type.</p>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-500">Grant New Membership</p>
                   <div className="flex gap-2">
-                    <select id="grant-user" className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white">
-                      {users.filter(u => u.role !== "owner").map(u => (
-                        <option key={u.id} value={u.id}>{u.display_name} ({u.email})</option>
-                      ))}
+                    <select
+                      value={grantUserId}
+                      onChange={(e) => setGrantUserId(e.target.value)}
+                      className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
+                    >
+                      <option value="">— Select user —</option>
+                      {users
+                        .filter(u => u.role !== "owner")
+                        .filter(u => getMembershipForUser(u.id)?.membership_type !== "permanent")
+                        .map(u => {
+                          const existing = getMembershipForUser(u.id);
+                          return (
+                            <option key={u.id} value={u.id}>
+                              {u.display_name} ({u.email}){existing ? ` — current: ${existing.membership_type}` : " — no membership"}
+                            </option>
+                          );
+                        })}
                     </select>
-                    <select id="grant-type" className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white">
+                    <select
+                      value={grantType}
+                      onChange={(e) => setGrantType(e.target.value)}
+                      className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm outline-none focus:border-white"
+                    >
                       <option value="manual">Manual</option>
                       <option value="permanent">Permanent</option>
                     </select>
-                    <button onClick={() => {
-                      const sel = document.getElementById("grant-user") as HTMLSelectElement;
-                      const type = document.getElementById("grant-type") as HTMLSelectElement;
-                      if (sel?.value) handleGrantMembership(sel.value, type?.value || "manual");
-                    }} className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium text-white transition hover:bg-emerald-700">Grant</button>
+                    <button
+                      onClick={() => handleGrantMembership(grantUserId, grantType)}
+                      disabled={!grantUserId || granting}
+                      className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {granting ? "Granting..." : "Grant"}
+                    </button>
                   </div>
+                  {grantType === "permanent" && (
+                    <p className="mt-2 text-[11px] text-amber-500">Permanent membership cannot be revoked.</p>
+                  )}
                 </div>
               )}
             </div>

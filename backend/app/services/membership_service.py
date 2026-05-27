@@ -80,3 +80,22 @@ def get_all_memberships() -> list[Membership]:
 
 def get_membership_by_user(user_id: str) -> Membership | None:
     return Membership.query.filter_by(user_id=user_id).first()
+
+
+def backfill_memberships() -> int:
+    from sqlalchemy import not_
+    user_ids_with_membership = db.session.query(Membership.user_id).distinct()
+    users_without = User.query.filter(not_(User.id.in_(user_ids_with_membership))).all()
+    count = 0
+    for user in users_without:
+        membership = Membership(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            membership_type=MembershipType.AUTOMATIC,
+            is_active=True,
+        )
+        db.session.add(membership)
+        count += 1
+    if count:
+        db.session.commit()
+    return count
