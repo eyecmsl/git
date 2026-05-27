@@ -35,15 +35,19 @@ export default function LoginPage() {
     }
   }, [turnstileEnabled, turnstileReady, turnstileRef]);
 
-  if (authLoading) {
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push("/dashboard");
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading || user) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <p className="text-neutral-400">Loading...</p>
       </main>
     );
   }
-
-  if (user) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
