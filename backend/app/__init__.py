@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_limiter import Limiter
@@ -32,6 +32,16 @@ def create_app() -> Flask:
 
     from app.api import api_bp
     app.register_blueprint(api_bp, url_prefix="/api/v1")
+
+    from app.utils.errors import register_error_handlers
+    register_error_handlers(app)
+
+    upload_dir = os.path.join(app.root_path, "..", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    @app.get("/uploads/<path:filename>")
+    def serve_upload(filename: str):
+        return send_from_directory(upload_dir, filename)
 
     @app.after_request
     def security_headers(response):

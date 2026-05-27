@@ -3,6 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
+
+interface Resource {
+  id: string;
+  title: string;
+  description: string | null;
+  file_path: string;
+  file_type: string | null;
+  file_size: number | null;
+  uploader_name: string | null;
+  created_at: string;
+}
 
 function CurrentTime() {
   const [time, setTime] = useState(new Date());
@@ -39,12 +51,23 @@ function Greeting({ name }: { name: string }) {
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user) {
+      api.get<{ resources: Resource[] }>("/resources")
+        .then((data) => setResources(data.resources))
+        .catch(() => {})
+        .finally(() => setFetching(false));
+    }
+  }, [user]);
 
   if (loading) {
     return (
@@ -74,24 +97,36 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="mt-24 grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
-          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-            Study Materials
-          </p>
-          <p className="mt-2 text-sm text-neutral-400">
-            Your study resources will appear here.
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-6">
-          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-            Progress
-          </p>
-          <p className="mt-2 text-sm text-neutral-400">
-            Track your learning progress.
-          </p>
-        </div>
+      <div className="mt-16 w-full max-w-2xl">
+        <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">
+          Study Materials
+        </p>
+        {fetching ? (
+          <p className="text-sm text-neutral-500">Loading...</p>
+        ) : resources.length === 0 ? (
+          <p className="text-sm text-neutral-500">No resources available yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {resources.map((r) => (
+              <a
+                key={r.id}
+                href={`/uploads/${r.file_path}`}
+                target="_blank"
+                className="block rounded-lg border border-neutral-800 bg-neutral-900/50 p-5 transition hover:border-neutral-700 hover:bg-neutral-900"
+              >
+                <p className="font-medium">{r.title}</p>
+                {r.description && (
+                  <p className="mt-1 text-sm text-neutral-400">{r.description}</p>
+                )}
+                <p className="mt-2 text-xs text-neutral-500">
+                  {r.file_type?.toUpperCase() || "Unknown"}
+                  {r.file_size ? ` · ${(r.file_size / 1024).toFixed(1)} KB` : ""}
+                  {r.uploader_name ? ` · by ${r.uploader_name}` : ""}
+                </p>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );
